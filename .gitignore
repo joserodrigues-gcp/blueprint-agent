@@ -207,3 +207,9 @@ tools/a2a-inspector/
 *.pem
 *-key.json
 credentials*.json
+
+# Local coding-agent bridge (imports the committed AGENTS.md)
+CLAUDE.md
+
+# Local build notes, not part of the reference implementation
+docs/build-log.md
