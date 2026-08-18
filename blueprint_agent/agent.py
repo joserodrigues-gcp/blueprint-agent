@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import datetime
+import os
 from zoneinfo import ZoneInfo
 
 from google.adk.agents import Agent
@@ -22,7 +23,7 @@ from google.adk.models import Gemini
 from google.genai import types
 
 
-MODEL = "gemini-3.6-flash"
+MODEL = os.environ.get("MODEL", "gemini-3.5-flash-lite")
 
 
 def get_weather(query: str) -> str:
