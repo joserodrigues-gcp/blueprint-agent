@@ -207,6 +207,10 @@ my_env.tfvars
 !.env
 .env.secrets
 
+# `agents-cli eval run` output: timestamped traces and grade results, one set per
+# run. A baseline kept for `eval compare` would be a deliberate `git add -f`.
+artifacts/
+
 # A2A Inspector
 tools/a2a-inspector/
 

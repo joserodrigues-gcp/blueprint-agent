@@ -1,8 +1,15 @@
 """Local LLM-as-judge for `custom_response_quality` (see eval_config.yaml)."""
 
+import os
+
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+
+# Pinned separately from the agent's MODEL on purpose: a grader that changes
+# when the agent's model changes makes scores incomparable across runs. It is
+# also deliberately a larger model than the agent's default.
+JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-3.6-flash")
 
 
 class _Verdict(BaseModel):
@@ -32,12 +39,18 @@ def evaluate(instance):
 
     client = genai.Client()  # AI Studio (GEMINI_API_KEY) or Agent Platform (ADC)
     response = client.models.generate_content(
-        model="gemini-3.6-flash",
+        model=JUDGE_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0,  # deterministic grading
             response_mime_type="application/json",
             response_schema=_Verdict,  # guaranteed schema-valid JSON
+            # The judge declares no tools, but google-genai treats AFC as
+            # enabled unless told otherwise, so it would enter the AFC path and
+            # warn about function calling in a call with no functions.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True
+            ),
         ),
     )
     verdict = response.parsed
