@@ -56,7 +56,7 @@ def log_output(pipe: Any, log_func: Any) -> None:
         log_func(line.strip())
 
 
-def start_server() -> subprocess.Popen[str]:
+def start_server() -> tuple[subprocess.Popen[str], list[threading.Thread]]:
     """Start the FastAPI server using subprocess and log its output."""
     command = [
         sys.executable,
@@ -82,14 +82,18 @@ def start_server() -> subprocess.Popen[str]:
     )
 
     # Start threads to log stdout and stderr in real-time
-    threading.Thread(
-        target=log_output, args=(process.stdout, logger.info), daemon=True
-    ).start()
-    threading.Thread(
-        target=log_output, args=(process.stderr, logger.error), daemon=True
-    ).start()
+    readers = [
+        threading.Thread(
+            target=log_output, args=(process.stdout, logger.info), daemon=True
+        ),
+        threading.Thread(
+            target=log_output, args=(process.stderr, logger.error), daemon=True
+        ),
+    ]
+    for reader in readers:
+        reader.start()
 
-    return process
+    return process, readers
 
 
 def wait_for_server(timeout: int = 90, interval: int = 1) -> bool:
@@ -112,7 +116,7 @@ def wait_for_server(timeout: int = 90, interval: int = 1) -> bool:
 def server_fixture(request: Any) -> Iterator[subprocess.Popen[str]]:
     """Pytest fixture to start and stop the server for testing."""
     logger.info("Starting server process")
-    server_process = start_server()
+    server_process, readers = start_server()
     if not wait_for_server():
         pytest.fail("Server failed to start")
     logger.info("Server process started")
@@ -121,6 +125,16 @@ def server_fixture(request: Any) -> Iterator[subprocess.Popen[str]]:
         logger.info("Stopping server process")
         server_process.terminate()
         server_process.wait()
+        # Popen does not close its own pipes, so without this both leak to the
+        # GC, which reports the ResourceWarning against whichever test happens
+        # to be tearing down at the time rather than against this fixture.
+        # Join first: the reader threads own the pipes, and closing one while a
+        # thread is blocked in readline raises inside that thread.
+        for reader in readers:
+            reader.join(timeout=5)
+        for pipe in (server_process.stdout, server_process.stderr):
+            if pipe is not None:
+                pipe.close()
         logger.info("Server process stopped")
 
     request.addfinalizer(stop_server)
