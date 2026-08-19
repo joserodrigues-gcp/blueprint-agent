@@ -200,6 +200,13 @@ my_env.tfvars
 .env
 .google-agents-cli/
 
+# .env IS tracked here, overriding the two template ignores above (:108, :200).
+# `agents-cli deploy` copies it onto the engine's spec.deployment_spec.env, so it
+# is the declared source for the deployed environment, not a local convenience.
+# Secrets go in .env.secrets, which stays ignored.
+!.env
+.env.secrets
+
 # A2A Inspector
 tools/a2a-inspector/
 
