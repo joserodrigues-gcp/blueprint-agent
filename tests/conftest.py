@@ -23,8 +23,11 @@ an API key, which points away from the actual cause.
 or an inline `MODEL=... pytest` still wins over the file.
 """
 
-from pathlib import Path
+from dotenv import find_dotenv, load_dotenv
 
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).parent.parent / ".env")
+# find_dotenv walks up from this file rather than from the working directory, which is
+# what `load_dotenv()` in fast_api_app.py resolves to as well. `.env.secrets` holds the
+# machine-local half (see .env.secrets.example) and is absent on CI, where find_dotenv
+# returns "" and load_dotenv has nothing to load.
+load_dotenv(find_dotenv(".env"))
+load_dotenv(find_dotenv(".env.secrets"))

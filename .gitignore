@@ -203,7 +203,8 @@ my_env.tfvars
 # .env IS tracked here, overriding the two template ignores above (:108, :200).
 # `agents-cli deploy` copies it onto the engine's spec.deployment_spec.env, so it
 # is the declared source for the deployed environment, not a local convenience.
-# Secrets go in .env.secrets, which stays ignored.
+# Secrets and per-machine values go in .env.secrets, which stays ignored and is not
+# copied to the engine; .env.secrets.example documents it and is tracked.
 !.env
 .env.secrets
 
