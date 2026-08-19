@@ -18,7 +18,7 @@ Before writing any code, understand the project's requirements, constraints, and
 Implement agent logic in `blueprint_agent/`. Use `agents-cli playground` for interactive testing. Iterate based on user feedback.
 
 ### Phase 3: The Evaluation Loop (Main Iteration Phase)
-Start with 1-2 eval cases, run `agents-cli eval generate`, then `agents-cli eval grade`, iterate by making changes and rerunning both commands until satisfied. Expect 5-10+ iterations. Once you have a baseline, reach for `agents-cli eval compare` (regression diffs), `agents-cli eval analyze` (cluster failure modes), and `agents-cli eval optimize` (auto-tune prompts). See the **Evaluation Guide** for metrics, dataset schema, LLM-as-judge config, and common gotchas.
+Start with 1-2 eval cases, run `agents-cli eval run`, iterate by making changes and rerunning it until satisfied. Expect 5-10+ iterations. Once you have a baseline, reach for `agents-cli eval compare` (regression diffs), `agents-cli eval analyze` (cluster failure modes), and `agents-cli eval optimize` (auto-tune prompts). See the **Evaluation Guide** for metrics, dataset schema, LLM-as-judge config, and common gotchas.
 
 ### Phase 4: Pre-Deployment Tests
 Run `uv run pytest tests/unit tests/integration`. Fix issues until all tests pass.
@@ -36,8 +36,8 @@ Ask the user: Option A (simple single-project) or Option B (full CI/CD pipeline 
 | `agents-cli playground` | Interactive local testing |
 | `uv run pytest tests/unit tests/integration` | Run unit and integration tests |
 | `agents-cli eval dataset synthesize` | Synthesize multi-turn eval scenarios for your agent |
-| `agents-cli eval generate` | Run agent on eval dataset, produce traces |
-| `agents-cli eval grade` | Run agent evaluations on the traces |
+| `agents-cli eval run` | Run the agent over the eval dataset and grade the traces |
+| `agents-cli eval generate` / `agents-cli eval grade` | Decoupled form: produce traces, then grade them |
 | `agents-cli eval compare` | Compare two grade-results files (regression check) |
 | `agents-cli eval analyze` | Cluster failure modes from grade results |
 | `agents-cli eval metric list` | List built-in metrics available in the SDK |

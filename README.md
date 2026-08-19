@@ -1,7 +1,7 @@
 # blueprint-agent
 
 Simple ReAct agent
-Agent generated with `agents-cli` version `1.3.1`
+Agent generated with `agents-cli` version `1.4.0`
 
 ## Project Structure
 

@@ -16,22 +16,16 @@ import contextlib
 import os
 from collections.abc import AsyncIterator
 
-import google.auth
 from a2a.server.tasks import InMemoryTaskStore
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.runners import Runner
-from google.cloud import logging as google_cloud_logging
 
 from blueprint_agent.app_utils import services
 from blueprint_agent.app_utils.a2a import attach_a2a_routes
-from blueprint_agent.app_utils.typing import Feedback
 
 load_dotenv()
-_, project_id = google.auth.default()
-logging_client = google_cloud_logging.Client()
-logger = logging_client.logger(__name__)
 allow_origins = (
     os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 )
@@ -73,20 +67,6 @@ app: FastAPI = get_fast_api_app(
 )
 app.title = "blueprint-agent"
 app.description = "API for interacting with the Agent blueprint-agent"
-
-
-@app.post("/feedback")
-def collect_feedback(feedback: Feedback) -> dict[str, str]:
-    """Collect and log feedback.
-
-    Args:
-        feedback: The feedback data to log
-
-    Returns:
-        Success message
-    """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
-    return {"status": "success"}
 
 
 # Main execution
