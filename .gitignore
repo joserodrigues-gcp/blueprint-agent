@@ -225,3 +225,8 @@ CLAUDE.md
 
 # Local build notes, not part of the reference implementation
 docs/build-log.md
+docs/findings.md
+
+# Diagram sets belong in ../platform-diagrams, but tools write them here. Ignored so a
+# stray set cannot ride along in `git add -A`; move it out rather than tracking it.
+docs/diagrams/

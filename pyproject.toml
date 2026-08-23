@@ -79,7 +79,10 @@ deprecated = "ignore"
 
 [tool.codespell]
 ignore-words-list = "rouge"
-skip = "./locust_env/*,uv.lock,.venv,./frontend,**/package-lock.json"
+# `**/vendor` and `**/node_modules` added to the template's list: codespell walks the tree
+# itself rather than asking git, so third-party JS a tool downloaded on demand is in scope
+# for it even when .gitignore excludes it.
+skip = "./locust_env/*,uv.lock,.venv,./frontend,**/package-lock.json,**/node_modules,**/vendor"
 
 
 [build-system]
