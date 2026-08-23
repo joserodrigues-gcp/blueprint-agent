@@ -27,7 +27,7 @@ from dotenv import find_dotenv, load_dotenv
 
 # find_dotenv walks up from this file rather than from the working directory, which is
 # what `load_dotenv()` in fast_api_app.py resolves to as well. `.env.secrets` holds the
-# machine-local half (see .env.secrets.example) and is absent on CI, where find_dotenv
-# returns "" and load_dotenv has nothing to load.
+# machine-local half, is gitignored, and is absent both on CI and on any checkout that
+# does not need it — find_dotenv then returns "" and load_dotenv has nothing to load.
 load_dotenv(find_dotenv(".env"))
 load_dotenv(find_dotenv(".env.secrets"))
