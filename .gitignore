@@ -215,6 +215,11 @@ my_env.tfvars
 # `agents-cli eval run` output. Keeping a baseline for `eval compare` means `git add -f`.
 artifacts/
 
+# `agents-cli deploy` output: the engine id and region it just wrote to. A local record
+# of one deploy, not a description of the repo — Terraform owns the engine, and
+# `--list` reports what is actually live.
+deployment_metadata.json
+
 # A2A Inspector
 tools/a2a-inspector/
 
