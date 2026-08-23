@@ -146,6 +146,12 @@ dmypy.json
 .terraform*
 .Terraform*
 
+# DIVERGES FROM THE SCAFFOLD: state has no leading dot, so `.terraform*` misses it.
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
 
 tmp*
 .agents-cli-scripts/
