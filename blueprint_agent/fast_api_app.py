@@ -17,7 +17,7 @@ import os
 from collections.abc import AsyncIterator
 
 from a2a.server.tasks import InMemoryTaskStore
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.runners import Runner
@@ -29,6 +29,15 @@ from blueprint_agent.app_utils.reasoning_engine_adapter import (
 )
 
 load_dotenv()
+# Machine-local overrides — notably GOOGLE_APPLICATION_CREDENTIALS, which points ADC
+# at this checkout's own gcloud credential home. Deliberately not in .env: `agents-cli
+# deploy` copies .env onto the engine, where a local credential path would override
+# the engine's service account.
+#
+# find_dotenv walks up from this file, so it resolves the same whatever the working
+# directory is; it returns "" when there is no such file, which load_dotenv treats as
+# nothing to load — the deployed image's case.
+load_dotenv(find_dotenv(".env.secrets"))
 otel_to_cloud = os.environ.get(
     "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", ""
 ).lower() in ("true", "1")
@@ -79,8 +88,8 @@ app.title = "blueprint-agent"
 app.description = "API for interacting with the Agent blueprint-agent"
 
 
-# Proxy routes so the Vertex AI Console Playground (reasoning_engine SDK) can
-# talk to this agent alongside the native adk_api routes.
+# Proxy routes so the Agent Platform console playground (reasoning_engine SDK)
+# can talk to this agent alongside the native adk_api routes.
 attach_reasoning_engine_routes(app)
 
 

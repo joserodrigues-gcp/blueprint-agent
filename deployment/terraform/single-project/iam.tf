@@ -57,7 +57,8 @@ resource "google_project_iam_member" "app_sa_roles" {
 }
 
 
-# Grant required permissions to Vertex AI service account for Agent Runtime
+# Grant required permissions to the Agent Platform service agent for Agent Runtime.
+# Still provisioned under its old name, gcp-sa-aiplatform — as is this resource.
 resource "google_project_iam_member" "vertex_ai_sa_permissions" {
   for_each = {
     for pair in setproduct(keys(local.project_ids), var.app_sa_roles) :

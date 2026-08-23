@@ -36,6 +36,9 @@ resource "google_vertex_ai_reasoning_engine" "app" {
         memory = "8Gi"
       }
 
+      # Create-only: `ignore_changes` below covers deployment_spec, so editing a value
+      # here later reports `0 to change`. Afterwards only `agents-cli deploy` reaches
+      # them — move the one key you need into `.env`, which leaves the rest untouched.
       env {
         name  = "LOGS_BUCKET_NAME"
         value = google_storage_bucket.logs_data_bucket.name
@@ -105,7 +108,7 @@ resource "google_vertex_ai_reasoning_engine" "app" {
   # Terraform creates the resource with a placeholder source build; CI/CD
   # overwrites the same source_code_spec with the real code. The deploy writes
   # source_code_spec, so the placeholder must use it too — a container_spec
-  # placeholder would be left alongside it and Agent Engine rejects the update.
+  # placeholder would be left alongside it and Agent Runtime rejects the update.
   # Ignore the spec and deployment_spec so Terraform never reverts the deployed agent.
   lifecycle {
     ignore_changes = [
