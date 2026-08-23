@@ -6,8 +6,8 @@ base_template: adk
 generated_at: '2026-08-18T02:09:28.126365+00:00'
 language: python
 create_params:
-  deployment_target: none
-  session_type: in_memory
+  deployment_target: agent_runtime
   cicd_runner: skip
   is_a2a: true
   agent_guidance_filename: AGENTS.md
+  agent_gateway: false

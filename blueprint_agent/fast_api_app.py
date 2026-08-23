@@ -17,24 +17,21 @@ import os
 from collections.abc import AsyncIterator
 
 from a2a.server.tasks import InMemoryTaskStore
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from google.adk.cli.fast_api import get_fast_api_app
 from google.adk.runners import Runner
 
 from blueprint_agent.app_utils import services
 from blueprint_agent.app_utils.a2a import attach_a2a_routes
+from blueprint_agent.app_utils.reasoning_engine_adapter import (
+    attach_reasoning_engine_routes,
+)
 
 load_dotenv()
-# Machine-local overrides — notably GOOGLE_APPLICATION_CREDENTIALS, which points ADC
-# at this checkout's own gcloud credential home. Deliberately not in .env: `agents-cli
-# deploy` copies .env onto the engine, where a local credential path would override
-# the engine's service account.
-#
-# find_dotenv walks up from this file, so it resolves the same whatever the working
-# directory is; it returns "" when there is no such file, which load_dotenv treats as
-# nothing to load — the deployed image's case.
-load_dotenv(find_dotenv(".env.secrets"))
+otel_to_cloud = os.environ.get(
+    "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", ""
+).lower() in ("true", "1")
 allow_origins = (
     os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 )
@@ -44,6 +41,9 @@ AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Runner for the A2A path, sharing the same session/artifact services as the
+    # adk_api and reasoning_engine paths (see services.py). Imported here so the
+    # agent is built after env/telemetry setup.
     from blueprint_agent.agent import app as adk_app
     from blueprint_agent.agent import root_agent
 
@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         artifact_service=services.get_artifact_service(),
         auto_create_session=True,
     )
+    # Shared by the A2A path and the reasoning_engine adapter routes.
     app.state.runner = runner
     app.state.agent_app_name = adk_app.name
     await attach_a2a_routes(
@@ -71,11 +72,16 @@ app: FastAPI = get_fast_api_app(
     artifact_service_uri=services.ARTIFACT_SERVICE_URI,
     allow_origins=allow_origins,
     session_service_uri=services.SESSION_SERVICE_URI,
-    otel_to_cloud=True,
+    otel_to_cloud=otel_to_cloud,
     lifespan=lifespan,
 )
 app.title = "blueprint-agent"
 app.description = "API for interacting with the Agent blueprint-agent"
+
+
+# Proxy routes so the Vertex AI Console Playground (reasoning_engine SDK) can
+# talk to this agent alongside the native adk_api routes.
+attach_reasoning_engine_routes(app)
 
 
 # Main execution

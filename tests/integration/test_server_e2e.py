@@ -56,7 +56,7 @@ def log_output(pipe: Any, log_func: Any) -> None:
         log_func(line.strip())
 
 
-def start_server() -> tuple[subprocess.Popen[str], list[threading.Thread]]:
+def start_server() -> subprocess.Popen[str]:
     """Start the FastAPI server using subprocess and log its output."""
     command = [
         sys.executable,
@@ -82,18 +82,14 @@ def start_server() -> tuple[subprocess.Popen[str], list[threading.Thread]]:
     )
 
     # Start threads to log stdout and stderr in real-time
-    readers = [
-        threading.Thread(
-            target=log_output, args=(process.stdout, logger.info), daemon=True
-        ),
-        threading.Thread(
-            target=log_output, args=(process.stderr, logger.error), daemon=True
-        ),
-    ]
-    for reader in readers:
-        reader.start()
+    threading.Thread(
+        target=log_output, args=(process.stdout, logger.info), daemon=True
+    ).start()
+    threading.Thread(
+        target=log_output, args=(process.stderr, logger.error), daemon=True
+    ).start()
 
-    return process, readers
+    return process
 
 
 def wait_for_server(timeout: int = 90, interval: int = 1) -> bool:
@@ -116,7 +112,7 @@ def wait_for_server(timeout: int = 90, interval: int = 1) -> bool:
 def server_fixture(request: Any) -> Iterator[subprocess.Popen[str]]:
     """Pytest fixture to start and stop the server for testing."""
     logger.info("Starting server process")
-    server_process, readers = start_server()
+    server_process = start_server()
     if not wait_for_server():
         pytest.fail("Server failed to start")
     logger.info("Server process started")
@@ -125,16 +121,6 @@ def server_fixture(request: Any) -> Iterator[subprocess.Popen[str]]:
         logger.info("Stopping server process")
         server_process.terminate()
         server_process.wait()
-        # Popen does not close its own pipes, so without this both leak to the
-        # GC, which reports the ResourceWarning against whichever test happens
-        # to be tearing down at the time rather than against this fixture.
-        # Join first: the reader threads own the pipes, and closing one while a
-        # thread is blocked in readline raises inside that thread.
-        for reader in readers:
-            reader.join(timeout=5)
-        for pipe in (server_process.stdout, server_process.stderr):
-            if pipe is not None:
-                pipe.close()
         logger.info("Server process stopped")
 
     request.addfinalizer(stop_server)
@@ -236,3 +222,30 @@ def test_agent_card(server_fixture: subprocess.Popen[str]) -> None:
         "supportedInterfaces",
     ):
         assert field in served_agent_card, f"Missing field in agent card: {field}"
+
+
+def test_reasoning_engine_stream(server_fixture: subprocess.Popen[str]) -> None:
+    """The reasoning_engine adapter (/api/stream_reasoning_engine) runs the agent.
+
+    This is the contract Agent Engine forwards :streamQuery calls to.
+    """
+    response = requests.post(
+        f"{BASE_URL}/api/stream_reasoning_engine",
+        headers=HEADERS,
+        json={
+            "class_method": "async_stream_query",
+            "input": {"user_id": f"u-{uuid.uuid4()}", "message": "Hi!"},
+        },
+        stream=True,
+        timeout=60,
+    )
+    assert response.status_code == 200
+
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert events, "No events from reasoning_engine adapter"
+    has_text = any(
+        (event.get("content") or {}).get("parts")
+        and any(part.get("text") for part in event["content"]["parts"])
+        for event in events
+    )
+    assert has_text, "No text content in reasoning_engine events"
