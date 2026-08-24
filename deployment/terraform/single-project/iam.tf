@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# The projects this configuration grants access in, each under a short name.
+#
+# A single-project deployment has exactly one entry, so the map looks like overhead. It
+# is what lets the IAM resources below be written once and repeated with for_each. A
+# multi-project layout adds entries here — say `staging = var.staging_project_id` — and
+# every binding follows automatically, with nothing duplicated per project.
 locals {
   project_ids = {
     default = var.project_id
@@ -24,7 +30,12 @@ data "google_project" "project" {
   project_id = var.project_id
 }
 
-# Grant Storage Object Creator role to default compute service account
+# Lets Cloud Build turn the agent's source into a container image, which is the step
+# `agents-cli deploy` triggers before Agent Runtime can start it.
+#
+# Builds run as the Compute Engine default service account. The builder role is what
+# lets that account read the uploaded source, write build logs, and push the finished
+# image. Without it a deploy fails in the build, before the engine is ever updated.
 resource "google_project_iam_member" "default_compute_sa_storage_object_creator" {
   project    = var.project_id
   role       = "roles/cloudbuild.builds.builder"
@@ -40,7 +51,12 @@ resource "google_service_account" "app_sa" {
   depends_on   = [resource.google_project_service.services]
 }
 
-# Grant application SA the required permissions to run the application
+# Grants the agent's service account every role in var.app_sa_roles, in every project.
+#
+# A google_project_iam_member holds one role, so for_each builds one per project-and-role
+# pair, with setproduct forming the pairs. Each instance is keyed by name rather than list
+# position — "default,roles/aiplatform.user" — so adding or removing a role leaves the
+# others untouched.
 resource "google_project_iam_member" "app_sa_roles" {
   for_each = {
     for pair in setproduct(keys(local.project_ids), var.app_sa_roles) :
@@ -63,6 +79,8 @@ resource "google_project_iam_member" "app_sa_roles" {
 # This role is granted here rather than added to var.app_sa_roles, because that list is
 # also applied to the Agent Platform service agent below. Only the agent needs it.
 resource "google_project_iam_member" "app_sa_metric_writer" {
+  # Grants the role once in every project. for_each walks the map above, and each.value
+  # holds that entry's project id.
   for_each = local.project_ids
 
   project    = each.value

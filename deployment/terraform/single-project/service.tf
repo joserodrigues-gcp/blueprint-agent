@@ -46,59 +46,106 @@ resource "google_vertex_ai_reasoning_engine" "app" {
       # run:
       #   agents-cli deploy --update-env-vars KEY=VALUE
       # Both leave the other variables untouched.
+
+      # Bucket the agent keeps session artifacts in — files a user uploads, files a tool
+      # produces. Without it artifacts live in memory and are lost when an instance
+      # restarts. Read in blueprint_agent/app_utils/services.py.
       env {
         name  = "LOGS_BUCKET_NAME"
         value = google_storage_bucket.logs_data_bucket.name
       }
 
-      # Where the model is served from. There is no GOOGLE_CLOUD_PROJECT beside it:
-      # Agent Runtime provides the project itself, and rejects the deployment if this
-      # block tries to set it.
+      # Where the model is served from, not where the agent runs. `global` is Gemini's
+      # multi-region endpoint; the agent's own region comes from var.region.
+      #
+      # There is no GOOGLE_CLOUD_PROJECT beside it: Agent Runtime provides the project
+      # itself, and rejects the deployment if this block tries to set it.
       env {
         name  = "GOOGLE_CLOUD_LOCATION"
         value = "global"
       }
 
+      # Sends model calls through Agent Platform instead of the Gemini Developer API.
+      # Agent Platform accepts the service account above as the caller's identity; the
+      # Developer API would need an API key.
+      #
+      # This is the current name for GOOGLE_GENAI_USE_VERTEXAI. The old name still works
+      # but raises a DeprecationWarning, and when both are set this one decides.
       env {
-        name  = "GOOGLE_GENAI_USE_VERTEXAI"
-        value = "True"
+        name  = "GOOGLE_GENAI_USE_ENTERPRISE"
+        value = "true"
       }
 
+      # Name this agent's telemetry is filed under. It becomes the service.name attribute
+      # on every span, metric and log, which is how you pick the agent's data out in Cloud
+      # Trace and Cloud Monitoring.
       env {
         name  = "OTEL_SERVICE_NAME"
         value = "blueprint-agent"
       }
 
+      # Keeps prompt and response text out of traces and logs. NO_CONTENT is the strictest
+      # of four settings — the others are EVENT_ONLY, SPAN_ONLY and SPAN_AND_EVENT.
+      #
+      # The text is still captured. The completion hook below writes it to Cloud Storage,
+      # and the telemetry carries a gs:// reference in place of the text.
       env {
         name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
         value = "NO_CONTENT"
       }
 
+      # Keeps that same text out of the spans ADK creates itself. Those spans predate the
+      # OpenTelemetry GenAI conventions and answer to their own switch, which is on until
+      # something sets it to false.
       env {
         name  = "ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS"
         value = "false"
       }
 
+      # Emits the current OpenTelemetry GenAI attribute names rather than the older ones.
+      # The BigQuery pipeline depends on it: the log sink in telemetry.tf selects
+      # gen_ai.client.inference.operation.details, an event only these conventions produce.
       env {
         name  = "OTEL_SEMCONV_STABILITY_OPT_IN"
         value = "gen_ai_latest_experimental"
       }
 
+      # Writes each uploaded file as newline-delimited JSON. The completions external
+      # table in telemetry.tf reads the bucket as NEWLINE_DELIMITED_JSON, so the default
+      # of `json` would leave that table unable to parse its own source files.
       env {
         name  = "OTEL_INSTRUMENTATION_GENAI_UPLOAD_FORMAT"
         value = "jsonl"
       }
 
+      # Turns on the upload hook, which sends prompts and responses to Cloud Storage.
+      # Without it the content is recorded nowhere, since the capture setting above keeps
+      # it out of spans and logs.
       env {
         name  = "OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK"
         value = "upload"
       }
 
+      # Prefix the hook writes under. Each model call produces up to three objects:
+      #
+      #   <uuid>_inputs.jsonl              the prompt
+      #   <uuid>_outputs.jsonl             the response
+      #   <hash>_system_instruction.jsonl  the system instruction, named by content hash
+      #                                    so identical instructions upload once
+      #
+      # The completions external table in telemetry.tf reads this same prefix, and each
+      # log record's gen_ai.*_ref attributes name the exact objects for that call.
       env {
         name  = "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH"
         value = "gs://${google_storage_bucket.logs_data_bucket.name}/completions"
       }
 
+      # Master switch for shipping telemetry to Google Cloud. It puts the exporters in
+      # place that send traces to Cloud Trace and logs to Cloud Logging, and it turns on
+      # the request metrics Agent Runtime reports for the engine.
+      #
+      # The same variable controls local runs: blueprint_agent/fast_api_app.py reads it
+      # into the otel_to_cloud argument of get_fast_api_app.
       env {
         name  = "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY"
         value = "true"

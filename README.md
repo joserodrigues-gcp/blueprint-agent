@@ -226,9 +226,9 @@ route, not `.env`, delivered the last two to the already-created engine.
 `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT`, and
 `ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=false`.
 
-The deprecated spelling there, and in `service.tf`, is left alone deliberately: the engine ends
-up with both names set to true, readers prefer the new one, and a warning fires only if the two
-*disagree*. Renaming would change nothing and cost a divergence.
+That list still uses the deprecated `GOOGLE_GENAI_USE_VERTEXAI`, so a deployed engine carries
+both spellings. It is harmless: readers check `GOOGLE_GENAI_USE_ENTERPRISE` first, and a warning
+fires only if the two *disagree*. `.env` and `service.tf` both set the current name.
 
 ### 4. `agents-cli deploy` flags — deployed engine shape
 
