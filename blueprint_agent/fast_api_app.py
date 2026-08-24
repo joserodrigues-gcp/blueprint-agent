@@ -29,14 +29,16 @@ from blueprint_agent.app_utils.reasoning_engine_adapter import (
 )
 
 load_dotenv()
-# Machine-local overrides — notably GOOGLE_APPLICATION_CREDENTIALS, which points ADC
-# at this checkout's own gcloud credential home. Deliberately not in .env: `agents-cli
-# deploy` copies .env onto the engine, where a local credential path would override
-# the engine's service account.
+# Settings that belong to this machine only.
 #
-# find_dotenv walks up from this file, so it resolves the same whatever the working
-# directory is; it returns "" when there is no such file, which load_dotenv treats as
-# nothing to load — the deployed image's case.
+# They are kept out of .env because `agents-cli deploy` copies .env onto the deployed
+# runtime. GOOGLE_APPLICATION_CREDENTIALS is the clearest example: it points at a local
+# credentials file, which on the runtime would override its own service account.
+#
+# find_dotenv looks for the file relative to this module rather than the current
+# directory, so it resolves the same wherever the server is started from. It returns an
+# empty string when there is no such file — the case in the deployed image, where
+# load_dotenv then does nothing.
 load_dotenv(find_dotenv(".env.secrets"))
 otel_to_cloud = os.environ.get(
     "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", ""
@@ -50,9 +52,11 @@ AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Runner for the A2A path, sharing the same session/artifact services as the
-    # adk_api and reasoning_engine paths (see services.py). Imported here so the
-    # agent is built after env/telemetry setup.
+    # The agent is imported inside the lifespan so that it is built after the
+    # environment and telemetry above are in place.
+    #
+    # Its runner uses the shared session and artifact services from services.py, so a
+    # session started on any of the three surfaces is visible to the other two.
     from blueprint_agent.agent import app as adk_app
     from blueprint_agent.agent import root_agent
 
@@ -62,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         artifact_service=services.get_artifact_service(),
         auto_create_session=True,
     )
-    # Shared by the A2A path and the reasoning_engine adapter routes.
+    # Put on app.state so the reasoning_engine routes can use the same runner.
     app.state.runner = runner
     app.state.agent_app_name = adk_app.name
     await attach_a2a_routes(
@@ -88,8 +92,9 @@ app.title = "blueprint-agent"
 app.description = "API for interacting with the Agent blueprint-agent"
 
 
-# Proxy routes so the Agent Platform console playground (reasoning_engine SDK)
-# can talk to this agent alongside the native adk_api routes.
+# Adds a third set of routes, in the shape the reasoning_engine SDK expects. They run
+# beside the native adk_api ones and let the Agent Platform console playground drive
+# this agent.
 attach_reasoning_engine_routes(app)
 
 

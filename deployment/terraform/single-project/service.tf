@@ -36,16 +36,24 @@ resource "google_vertex_ai_reasoning_engine" "app" {
         memory = "8Gi"
       }
 
-      # Create-only: `ignore_changes` below covers deployment_spec, so editing a value
-      # here later reports `0 to change`. Afterwards only `agents-cli deploy` reaches
-      # them — move the one key you need into `.env`, which leaves the rest untouched.
+      # Environment variables for the deployed agent.
+      #
+      # Terraform sets these when it creates the runtime, and then stops managing them —
+      # see the lifecycle block at the end of this file. Editing a value here has no
+      # effect on an agent that already exists.
+      #
+      # To change one on a running agent, either add that key to `.env` and redeploy, or
+      # run:
+      #   agents-cli deploy --update-env-vars KEY=VALUE
+      # Both leave the other variables untouched.
       env {
         name  = "LOGS_BUCKET_NAME"
         value = google_storage_bucket.logs_data_bucket.name
       }
 
-      # GOOGLE_CLOUD_PROJECT is reserved by Agent Runtime (the platform injects
-      # it) and rejected in deployment_spec.env; GOOGLE_CLOUD_LOCATION is allowed.
+      # Where the model is served from. There is no GOOGLE_CLOUD_PROJECT beside it:
+      # Agent Runtime provides the project itself, and rejects the deployment if this
+      # block tries to set it.
       env {
         name  = "GOOGLE_CLOUD_LOCATION"
         value = "global"
@@ -95,6 +103,29 @@ resource "google_vertex_ai_reasoning_engine" "app" {
         name  = "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY"
         value = "true"
       }
+
+      # Sends the agent's own metrics to Cloud Monitoring: token usage, model and agent
+      # latency, tool and inference call counts. The managed telemetry enabled above
+      # reports request counts and container utilisation, but none of these.
+      #
+      # Note this is the metrics-only endpoint. The general-purpose
+      # OTEL_EXPORTER_OTLP_ENDPOINT would redirect traces as well, and they would then
+      # be exported twice.
+      env {
+        name  = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+        value = "https://telemetry.googleapis.com/v1/metrics"
+      }
+
+      # Tells the exporter above to authenticate as the runtime's service account.
+      # Required: without it the metrics are sent unauthenticated and rejected with a
+      # 403, which is the only sign that anything is wrong.
+      #
+      # The named provider comes from opentelemetry-exporter-credential-provider-gcp,
+      # a dependency in pyproject.toml.
+      env {
+        name  = "OTEL_PYTHON_EXPORTER_OTLP_HTTP_METRICS_CREDENTIAL_PROVIDER"
+        value = "gcp_http_credentials"
+      }
     }
 
     source_code_spec {
@@ -105,16 +136,27 @@ resource "google_vertex_ai_reasoning_engine" "app" {
     }
   }
 
-  # Terraform creates the resource with a placeholder source build; CI/CD
-  # overwrites the same source_code_spec with the real code. The deploy writes
-  # source_code_spec, so the placeholder must use it too — a container_spec
-  # placeholder would be left alongside it and Agent Runtime rejects the update.
-  # Ignore the spec and deployment_spec so Terraform never reverts the deployed agent.
+  # Two things share this resource: Terraform creates it, and `agents-cli deploy` (or the
+  # CI/CD pipeline) fills it with the real agent.
+  #
+  # Terraform goes first, using the placeholder archive above, so the runtime and
+  # everything referring to it exist before there is any code to deploy. The placeholder
+  # is a source archive rather than a container image, because a deploy that ships source
+  # cannot replace an image.
+  #
+  # Everything the deploy writes is listed below, so Terraform leaves it alone and no
+  # later `apply` undoes a deployment:
+  #
+  #   container_spec, source_code_spec  the agent's code and image
+  #   deployment_spec                   env vars, CPU, memory, scaling
+  #   class_methods                     the API the deploy publishes for the agent
+  #                                     (get_session, stream_query, and so on)
   lifecycle {
     ignore_changes = [
       spec[0].container_spec,
       spec[0].source_code_spec,
       spec[0].deployment_spec,
+      spec[0].class_methods,
     ]
   }
 

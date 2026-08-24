@@ -47,8 +47,9 @@ def attach_reasoning_engine_routes(app: FastAPI) -> None:
         if runtime is None:
             from blueprint_agent.agent import app as adk_app
 
-            # Reuse the process-wide services so sessions created here are
-            # visible to the adk_api and A2A paths, and vice versa (see services.py).
+            # Use the shared services from services.py rather than new ones, so a
+            # session created through these routes is also visible to the adk_api and
+            # A2A routes, and the other way round.
             runtime = AdkApp(
                 app=adk_app,
                 session_service_builder=services.get_session_service,

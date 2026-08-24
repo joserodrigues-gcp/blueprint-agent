@@ -206,13 +206,19 @@ Because the engine's existing values form the lowest layer, **removing a key fro
 not remove it from a deployed engine** — the previous value persists until a REST `PATCH`
 clears it. Tracking `.env` in git is what makes this merge-only channel reviewable.
 
-**The eleven telemetry keys live in `service.tf`'s `deployment_spec.env`**, which is create-only
-— editing one there later reports `0 to change`. That merge is what keeps them reachable: **to
-change one on a running engine, add that single key to `.env` and redeploy**, or pass
-`--update-env-vars` for a one-off. Two of them also change local behaviour, since `.env`
+**The thirteen telemetry keys live in `service.tf`'s `deployment_spec.env`**, which is
+create-only — editing one there later reports `0 to change`. A fresh clone still gets all
+thirteen, and keeps them: Terraform writes them when it creates the engine, and each later
+deploy reads the live engine's env back and re-sends it as its bottom layer. What create-only
+costs is the catch-up — **an engine created before a key was added to `service.tf` never sees
+it**, and only `--update-env-vars`, or that single key added to `.env`, can deliver it. Same
+route to change one on a running engine. Three of them also change local behaviour, since `.env`
 configures both: `GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY` gates `otel_to_cloud` in
-`fast_api_app.py:41`, and `OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK` without its
-bucket-derived base path makes every local run log `…UPLOAD_BASE_PATH is required but not set`.
+`fast_api_app.py:41`, `OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK` without its bucket-derived
+base path makes every local run log `…UPLOAD_BASE_PATH is required but not set`, and
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` starts a workstation exporting metrics to Google
+(findings, *`.env` is a shared local/deployed channel*). Which is why the `--update-env-vars`
+route, not `.env`, delivered the last two to the already-created engine.
 
 `agents-cli deploy` also supplies overridable defaults when the corresponding keys are absent:
 `AGENT_VERSION` (from `pyproject.toml`), `GOOGLE_GENAI_USE_VERTEXAI=true`,
@@ -261,53 +267,11 @@ Decide these before the first deploy; adopting one later means a new engine unde
 `agents-cli deploy` does not send `spec.agentCard`, so the Agent Registry entry is a `CUSTOM`
 one with no skills or JSON-RPC address. The runtime still serves a valid card over HTTP.
 
-### Divergences from the scaffold, and what an `agents-cli` upgrade does to them
+### Divergences from the scaffold
 
-`agents-cli scaffold upgrade` regenerates template-owned files, and **the merge keeps our side
-and drops the template's** — so the risk is not a reverted local change, it is an upstream
-improvement disappearing without a word. 1.4.0's `GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY`
-gate on `otel_to_cloud` is exactly what a keep-ours merge would have discarded.
-
-Two rules follow. **Prefer changing a value over deleting or adding a block** — a changed value
-merges against a recognisable template line, where a deleted block is an invisible hole a future
-template addition falls into. And **keep only divergences whose reversal would change
-behaviour**, since a cosmetic one costs the same merge conflict and buys nothing.
-
-The inventory is measured, not remembered — generate a pristine scaffold and diff it:
-
-```bash
-agents-cli create blueprint-agent -a adk -o /tmp/pristine -d agent_runtime \
-  --session-type in_memory --cicd-runner skip --agent-guidance-filename AGENTS.md \
-  --no-agent-gateway -dir blueprint_agent --region us-central1 -y
-diff -rq /tmp/pristine/blueprint-agent .
-```
-
-Sixteen files differ from a pristine 1.4.0 tree; three more are ours alone. The Terraform and
-ignore-file departures also carry a `DIVERGES FROM THE SCAFFOLD` comment at the point of change.
-Ranked by what an upgrade could cost:
-
-| File | Divergence | Cost if the merge keeps ours |
-|------|------------|------------------------------|
-| `fast_api_app.py` | `attach_reasoning_engine_routes(app)`; `otel_to_cloud` read from env rather than hardcoded `True` | **Highest** — additions inside a file the template actively develops. Diff it every upgrade |
-| `test_server_e2e.py` | `test_reasoning_engine_stream`; the fixture closes its pipes | New tests hide new template tests that would have replaced them |
-| `pyproject.toml` | `google-cloud-aiplatform[agent-engines,evaluation]`, `protobuf`; `**/node_modules,**/vendor` added to codespell's skip list | **Reverted, not kept** — `[project.dependencies]` is the one section treated as template-owned |
-| `response_quality.py` | Judge model configurable; AFC warning silenced | Loses template improvements to the rubric |
-| `service.tf` | Comment only: the env block is create-only, and one rebranded word | None — no value differs from the template |
-| `variables.tf` | `region` default removed; `telemetry_logs_filter` annotated as unused | Low, but re-check: restoring `us-east1` reintroduces a silent wrong-region build |
-| `agent.py` | `MODEL` read from the environment, default `gemini-3.5-flash-lite` | Low, and deliberate — the scaffold hardcodes a different model |
-| `.gitignore`, `.env`, `.env.example`, `agents-cli-manifest.yaml`, `vars/env.tfvars`, `iam.tf`, `reasoning_engine_adapter.py`, `README.md`, `uv.lock` | This project's identity, ignore rules, comments, and prose | None — all of it is meant to be local |
-
-**Ours alone:** `deployment/terraform/single-project/backend.tf` (state in GCS, using the bucket
-and prefix `infra cicd` would pick), `deployment/terraform/bootstrap-state-bucket.sh`, and
-`tests/conftest.py`.
-
-Not local additions, despite appearances: `app_utils/reasoning_engine_adapter.py` and `a2a.py`'s
-`_resolve_app_url` both ship in 1.4.0. So does the `terraform fmt` drift in `apis.tf`, `iam.tf`,
-and `telemetry.tf`, left unformatted so an upgrade diff stays readable.
-
-**After `agents-cli scaffold upgrade`:** re-run the diff above rather than trusting the merge,
-then `terraform plan -var-file=vars/env.tfvars` — a plan proposing changes to an existing
-engine's `deployment_spec` means `ignore_changes` was dropped.
+Sixteen files differ from a pristine 1.4.0 tree and three more are ours alone. The inventory —
+what each departure is, and what `agents-cli scaffold upgrade` would cost if its keep-ours merge
+discarded the template's side — is checkout-local and lives in `docs/divergences.md`.
 
 ## Observability
 
@@ -337,6 +301,27 @@ Environment variables in `service.tf` control the split:
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `NO_CONTENT` | Keep content out of log payloads |
 | `ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS` | `false` | Keep content out of Cloud Trace spans |
 | `GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY` | `true` | Required — also gates `otel_to_cloud` in `fast_api_app.py` |
+
+### Metrics
+
+The managed telemetry path publishes only `aiplatform.googleapis.com/reasoning_engine/*` — request
+counts and container utilisation. ADK's own histograms are a separate export, off by default:
+
+| Variable | Value | Effect |
+|----------|-------|--------|
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `https://telemetry.googleapis.com/v1/metrics` | Turns the OTLP metric exporter on. The **signal-specific** variable, never the generic `OTEL_EXPORTER_OTLP_ENDPOINT`, which would redirect traces too |
+| `OTEL_PYTHON_EXPORTER_OTLP_HTTP_METRICS_CREDENTIAL_PROVIDER` | `gcp_http_credentials` | Authenticates that exporter. Omitting it is a silent `403`, not a missing-config error |
+
+They add seven histograms under the `prometheus.googleapis.com/` namespace, each with a
+`/histogram` suffix on its type: `gen_ai.client.token.usage`, `gen_ai.client.operation.duration`,
+`gen_ai.invoke_agent.{duration,inference_calls,tool_calls}`, `gen_ai.execute_tool.duration` and
+`gen_ai.invoke_workflow.duration`. All are `CUMULATIVE`: read the last point per series rather
+than summing across points.
+
+The monitored resource is `prometheus_target`, not the reasoning engine — filter by
+`job = blueprint-agent` (from `OTEL_SERVICE_NAME`) and expect `cluster = __vae__` with an
+opaque `instance`. Metric labels carry what you actually want to slice by:
+`gen_ai.request.model`, `gen_ai.token.type` (`input` / `output`), `gen_ai.system`.
 
 ## Interoperability
 

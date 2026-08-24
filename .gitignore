@@ -146,7 +146,7 @@ dmypy.json
 .terraform*
 .Terraform*
 
-# DIVERGES FROM THE SCAFFOLD: state has no leading dot, so `.terraform*` misses it.
+# State has no leading dot, so `.terraform*` misses it.
 *.tfstate
 *.tfstate.*
 crash.log
@@ -206,9 +206,9 @@ my_env.tfvars
 .env
 .google-agents-cli/
 
-# DIVERGES FROM THE SCAFFOLD: .env IS tracked, overriding the two ignores above —
-# deploy treats it as the declared source for the engine's environment. Secrets and
-# per-machine values stay in .env.secrets, which is not copied to the engine.
+# .env IS tracked, overriding the two ignores above — deploy treats it as the declared
+# source for the engine's environment. Secrets and per-machine values stay in
+# .env.secrets, which is not copied to the engine.
 !.env
 .env.secrets
 
@@ -234,6 +234,7 @@ CLAUDE.md
 # Local build notes, not part of the reference implementation
 docs/build-log.md
 docs/findings.md
+docs/divergences.md
 
 # Diagram sets belong in ../platform-diagrams, but tools write them here. Ignored so a
 # stray set cannot ride along in `git add -A`; move it out rather than tracking it.

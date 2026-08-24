@@ -78,9 +78,9 @@ if TYPE_CHECKING:
     from google.adk.agents import BaseAgent
     from google.adk.runners import Runner
 
-# URI advertised on the agent card describing the executor extension shipped
-# by ADK. Kept as a module-level constant so callers can override or extend
-# the capabilities list when needed.
+# Identifies the executor extension that ADK implements. It is advertised on the agent
+# card so clients know what this agent supports. Defined at module level so callers can
+# replace it or add their own extensions to the list.
 _ADK_AGENT_EXECUTOR_EXTENSION_URI = (
     "https://google.github.io/adk-docs/a2a/a2a-extension/"
 )
@@ -129,8 +129,8 @@ def _resolve_app_url(app_url: str | None) -> str:
 
     agent_engine_id = os.getenv("GOOGLE_CLOUD_AGENT_ENGINE_ID")
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
-    # Not GOOGLE_CLOUD_LOCATION: the agent pins it to "global", which would build
-    # an invalid "global-aiplatform.googleapis.com" URL.
+    # This is the region the agent runs in, which is not GOOGLE_CLOUD_LOCATION. That one
+    # is set to "global" for model calls and would produce an invalid hostname here.
     location = os.getenv("GOOGLE_CLOUD_AGENT_ENGINE_LOCATION", "us-central1")
     if agent_engine_id and project and location:
         return (

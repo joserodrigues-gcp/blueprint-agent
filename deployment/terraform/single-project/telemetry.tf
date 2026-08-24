@@ -59,8 +59,9 @@ resource "google_logging_project_sink" "genai_logs_to_bq" {
   name        = "${var.project_name}-genai-logs"
   project     = var.project_id
   destination = "bigquery.googleapis.com/projects/${var.project_id}/datasets/${google_bigquery_dataset.telemetry_dataset.dataset_id}"
-  # Match GenAI completion logs on the event.name label (the log id, and hence
-  # the BigQuery sink table name, varies by deployment target).
+  # Selects GenAI completion logs by their event.name label. Matching on the log id
+  # instead would be fragile: it changes with the deployment target, and so does the
+  # name of the BigQuery table the sink writes to.
   filter      = "labels.\"event.name\"=\"gen_ai.client.inference.operation.details\" AND (labels.\"gen_ai.input.messages_ref\" =~ \".*${var.project_name}.*\" OR labels.\"gen_ai.output.messages_ref\" =~ \".*${var.project_name}.*\")"
 
   unique_writer_identity = true
@@ -157,6 +158,16 @@ resource "google_bigquery_table" "genai_logs_table" {
   # All fields NULLABLE to match Cloud Logging's default export behavior and
   # avoid sink write failures for optional fields (e.g. trace, spanId, labels).
   schema = file("${path.module}/../shared/genai_logs_schema.json")
+
+  # The schema above only applies when the table is created. After that, Cloud Logging
+  # owns it and adds columns as new log fields appear.
+  #
+  # Terraform must ignore the schema for that reason. Otherwise it sees those extra
+  # columns as ones to remove, which BigQuery cannot do to an existing table — so the
+  # plan proposes replacing the table, and every row of telemetry in it would be lost.
+  lifecycle {
+    ignore_changes = [schema]
+  }
 
   depends_on = [google_bigquery_dataset.telemetry_dataset]
 }

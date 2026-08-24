@@ -23,17 +23,20 @@ variable "project_id" {
   description = "Google Cloud Project ID for resource deployment."
 }
 
-# DIVERGES FROM THE SCAFFOLD: default "us-east1" removed. It contradicted
-# vars/env.tfvars and the manifest, and `agents-cli infra single-project` passes no
-# -var-file, so it would silently build in the wrong region. No default means
-# terraform asks, as it already does for project_id.
+# Where the agent runtime and its supporting resources are created.
+#
+# There is no default. Each environment sets its own region in vars/env.tfvars, and
+# Terraform asks for the value if that file is not passed — the same way it asks for
+# project_id.
 variable "region" {
   type        = string
   description = "Google Cloud region for resource deployment."
 }
 
-# Unused — nothing reads it. The live log-sink filter is telemetry.tf:64. Kept
-# because deleting a scaffold variable is a merge conflict for no gain.
+# Narrows which telemetry logs are exported to BigQuery.
+#
+# The log sink in telemetry.tf currently declares its own filter. Point that filter at
+# this variable to make it take effect.
 variable "telemetry_logs_filter" {
   type        = string
   description = "Log Sink filter for capturing telemetry data. Captures logs with the `traceloop.association.properties.log_type` attribute set to `tracing`."

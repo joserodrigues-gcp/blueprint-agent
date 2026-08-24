@@ -57,8 +57,23 @@ resource "google_project_iam_member" "app_sa_roles" {
 }
 
 
+# Lets the agent write its own metrics — token usage, latency, tool calls — to Cloud
+# Monitoring.
+#
+# This role is granted here rather than added to var.app_sa_roles, because that list is
+# also applied to the Agent Platform service agent below. Only the agent needs it.
+resource "google_project_iam_member" "app_sa_metric_writer" {
+  for_each = local.project_ids
+
+  project    = each.value
+  role       = "roles/monitoring.metricWriter"
+  member     = "serviceAccount:${google_service_account.app_sa.email}"
+  depends_on = [resource.google_project_service.services]
+}
+
+
 # Grant required permissions to the Agent Platform service agent for Agent Runtime.
-# Still provisioned under its old name, gcp-sa-aiplatform — as is this resource.
+# The service agent is still provisioned under its previous name, gcp-sa-aiplatform.
 resource "google_project_iam_member" "vertex_ai_sa_permissions" {
   for_each = {
     for pair in setproduct(keys(local.project_ids), var.app_sa_roles) :
