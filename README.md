@@ -5,9 +5,6 @@ Runtime**, part of the [Gemini Enterprise Agent
 Platform](https://cloud.google.com/products/gemini-enterprise-agent-platform). Generated with
 `agents-cli` 1.4.0 and then made deliberate.
 
-The agent logic is intentionally trivial — two stub tools behind a single Gemini model.
-Everything worth copying is around it.
-
 ## What this repo demonstrates
 
 | Pattern | Where |
@@ -66,9 +63,9 @@ as `uv run adk` for anything `agents-cli` doesn't wrap.
 `MODEL` environment variable, defaulting to `gemini-3.5-flash-lite`, with three retry attempts
 configured on the client.
 
-The `App` name is load-bearing: it becomes the A2A route (`/a2a/blueprint_agent`) and the app
-identifier in ADK's session store. Renaming it means updating the manifest, `pyproject.toml`,
-the `Dockerfile`, and the tests together.
+The `App` name becomes the A2A route (`/a2a/blueprint_agent`) and the app identifier in ADK's
+session store. Renaming it means updating the manifest, `pyproject.toml`, the `Dockerfile`, and
+the tests together.
 
 ## Serving surfaces
 
@@ -266,12 +263,6 @@ Decide these before the first deploy; adopting one later means a new engine unde
 
 `agents-cli deploy` does not send `spec.agentCard`, so the Agent Registry entry is a `CUSTOM`
 one with no skills or JSON-RPC address. The runtime still serves a valid card over HTTP.
-
-### Divergences from the scaffold
-
-Sixteen files differ from a pristine 1.4.0 tree and three more are ours alone. The inventory —
-what each departure is, and what `agents-cli scaffold upgrade` would cost if its keep-ours merge
-discarded the template's side — is checkout-local and lives in `docs/divergences.md`.
 
 ## Observability
 
