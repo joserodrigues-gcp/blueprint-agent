@@ -2,19 +2,9 @@
 
 A reference implementation of a [Google ADK](https://adk.dev/) agent deployed to **Agent
 Runtime**, part of the [Gemini Enterprise Agent
-Platform](https://cloud.google.com/products/gemini-enterprise-agent-platform). Generated with
-`agents-cli` 1.4.0 and then made deliberate.
-
-## What this repo demonstrates
-
-| Pattern | Where |
-|---------|-------|
-| One FastAPI process serving the ADK web UI, A2A, and the `reasoning_engine` contract — all sharing a single session store | `blueprint_agent/fast_api_app.py`, `app_utils/services.py` |
-| An A2A agent card that stays consumable by v0.3 clients (Gemini Enterprise registration) while serving v1.0 | `app_utils/a2a.py` |
-| Serving the `{class_method, input}` contract by hand, so the console playground works against a container-built engine | `app_utils/reasoning_engine_adapter.py` |
-| Message content routed to GCS and joined back to Cloud Logging metadata in BigQuery, never captured in spans | `deployment/terraform/single-project/telemetry.tf` |
-| Terraform creating the engine, then deliberately not reconciling it, so deploys don't fight `apply` | `deployment/terraform/single-project/service.tf` |
-| `.env` tracked in git, because deploy treats it as the declared source for the engine's environment | [Configuration](#configuration) |
+Platform](https://cloud.google.com/products/gemini-enterprise-agent-platform). It starts from
+what `agents-cli` 1.4.0 generates, and adds the telemetry around it: traces, metrics, and
+message content joined to request metadata in BigQuery.
 
 ## Repository layout
 
