@@ -346,15 +346,6 @@ opaque `instance`. Metric labels carry what you actually want to slice by:
 This agent speaks the [A2A Protocol](https://a2a-protocol.org/). Inspect the card and exercise
 the JSON-RPC endpoint with the [A2A Inspector](https://github.com/a2aproject/a2a-inspector).
 
-To register a deployed agent with Gemini Enterprise:
-
-```bash
-agents-cli publish gemini-enterprise
-```
-
-The served card advertises both a v1.0 and a v0.3 JSON-RPC interface, because Gemini
-Enterprise's registration validator still requires the v0.3 card shape.
-
 ## Reference
 
 - [ADK documentation](https://adk.dev/)
