@@ -6,6 +6,59 @@ Platform](https://cloud.google.com/products/gemini-enterprise-agent-platform). I
 what `agents-cli` 1.4.0 generates, and adds the telemetry around it: traces, metrics, and
 message content joined to request metadata in BigQuery.
 
+## Getting started
+
+### What you need installed
+
+| | What it does here |
+|---|---|
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | Runs everything Python in this repo. It fetches its own interpreter, so you don't need one — the project asks for 3.11 to 3.13 |
+| [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) | Supplies the credentials every call to Gemini and to Google Cloud is signed with |
+| [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.0 | Provisions everything under `deployment/terraform/`. Not needed to run the agent locally |
+
+`agents-cli` is not in that list — the first command below installs it. Python packages are not
+either; `agents-cli install` reads `pyproject.toml` and builds `.venv` for you.
+
+You also need a **Google Cloud project with billing enabled**. Terraform enables the individual
+APIs it needs, so an empty project is a fine starting point.
+
+### Run it locally
+
+```bash
+gcloud auth application-default login   # credentials the agent runs as
+uvx google-agents-cli setup             # install agents-cli and its skills
+agents-cli install                      # create .venv and sync dependencies
+agents-cli playground                   # ADK web UI on localhost, reloads on save
+```
+
+Set `GOOGLE_CLOUD_PROJECT` in [`.env`](.env) to your own project before the playground can
+answer. It is the only value a local run needs changed.
+
+### Before you deploy
+
+Two more places name a project, and neither one reads `.env`:
+
+| File | Value | |
+|------|-------|---|
+| [`deployment/terraform/single-project/vars/env.tfvars`](deployment/terraform/single-project/vars/env.tfvars) | `project_id` | Must match `.env`'s `GOOGLE_CLOUD_PROJECT`. Nothing checks that they agree |
+| [`deployment/terraform/single-project/backend.tf`](deployment/terraform/single-project/backend.tf) | `bucket` | Holds Terraform's state, so it has to exist before `terraform init` can run |
+
+Create that bucket once, after setting `project_id`:
+
+```bash
+deployment/terraform/bootstrap-state-bucket.sh
+```
+
+It reads `project_id` and `region` from `env.tfvars` and names the bucket
+`<project_id>-terraform-state` — the name to put in `backend.tf`. Re-running it is safe.
+
+[Deployment](#deployment) covers what happens from there.
+
+### Day to day
+
+Add packages with `uv add <package>`. ADK's own CLI is available as `uv run adk`, for anything
+`agents-cli` doesn't wrap.
+
 ## Repository layout
 
 ```
@@ -29,22 +82,6 @@ blueprint-agent/
 ├── agents-cli-manifest.yaml              # Scaffold decisions
 └── AGENTS.md                             # Guidance for coding agents working in this repo
 ```
-
-## Getting started
-
-Needs [uv](https://docs.astral.sh/uv/getting-started/installation/), the [Google Cloud
-SDK](https://cloud.google.com/sdk/docs/install) with application default credentials
-(`gcloud auth application-default login`), and Terraform ≥ 1.0 for the infrastructure.
-
-```bash
-uvx google-agents-cli setup     # install agents-cli and its skills, if needed
-agents-cli install              # sync dependencies into .venv
-agents-cli playground           # local server with the ADK web UI, auto-reloads on save
-```
-
-Point `.env` at your own project first — `GOOGLE_CLOUD_PROJECT` is the one value that must
-change when cloning this repo. Add packages with `uv add <package>`; ADK's own CLI is available
-as `uv run adk` for anything `agents-cli` doesn't wrap.
 
 ## The agent
 
