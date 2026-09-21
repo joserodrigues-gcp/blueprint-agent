@@ -17,7 +17,7 @@
 # The script is safe to re-run.
 terraform {
   backend "gcs" {
-    bucket = "tim-platform-lab-terraform-state"
+    bucket = "svc-project-gke02-terraform-state"
     prefix = "blueprint-agent/dev"
   }
 }

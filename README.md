@@ -341,13 +341,27 @@ The monitored resource is `prometheus_target`, not the reasoning engine — filt
 opaque `instance`. Metric labels carry what you actually want to slice by:
 `gen_ai.request.model`, `gen_ai.token.type` (`input` / `output`), `gen_ai.system`.
 
-## Interoperability
+## CI/CD Pipelines
 
-This agent speaks the [A2A Protocol](https://a2a-protocol.org/). Inspect the card and exercise
-the JSON-RPC endpoint with the [A2A Inspector](https://github.com/a2aproject/a2a-inspector).
+This repository includes production-ready Continuous Integration and Continuous Deployment pipelines for both **GitHub Actions** and **Google Cloud Build**:
+
+- **GitHub Actions**:
+  - [`.github/workflows/pr_checks.yaml`](.github/workflows/pr_checks.yaml) — Linting (Ruff, Codespell, Ty), Unit Tests (Pytest), Integration Tests (Pytest), Docker Image Build Check.
+  - [`.github/workflows/staging.yaml`](.github/workflows/staging.yaml) — Auto-deployment to Staging Agent Runtime upon merge to `main`.
+  - [`.github/workflows/deploy-to-prod.yaml`](.github/workflows/deploy-to-prod.yaml) — Gated production deployment with GitHub Environment approvals.
+- **Google Cloud Build**:
+  - [`.cloudbuild/pr_checks.yaml`](.cloudbuild/pr_checks.yaml) — Automated Pull Request checks and integration tests.
+  - [`.cloudbuild/staging.yaml`](.cloudbuild/staging.yaml) — Continuous deployment to Staging environment.
+  - [`.cloudbuild/deploy-to-prod.yaml`](.cloudbuild/deploy-to-prod.yaml) — Manual-approval gated production release.
+  - [`cloudbuild.yaml`](cloudbuild.yaml) — Standalone root pipeline for `gcloud builds submit`.
+- **Terraform CI/CD Module**:
+  - [`deployment/terraform/cicd/`](deployment/terraform/cicd/) — Automated provisioning of Workload Identity Federation (WIF), IAM roles, GitHub secrets/variables, and Cloud Build triggers.
+
+For detailed setup instructions, environment variables, and Workload Identity Federation configuration, see the [CI/CD Guide](docs/CI_CD_GUIDE.md).
 
 ## Reference
 
 - [ADK documentation](https://adk.dev/)
+- [`docs/CI_CD_GUIDE.md`](docs/CI_CD_GUIDE.md) — Comprehensive CI/CD pipeline guide for GitHub Actions and Cloud Build
 - [`AGENTS.md`](AGENTS.md) — development phases and operating rules for coding agents in this
   repo

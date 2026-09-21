@@ -1,0 +1,15 @@
+.gcloudignore
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+sa-key.json
+*-key.json
+credentials*.json
+deployment/.terraform
+deployment/**/*.tfstate
+deployment/**/*.tfstate.*

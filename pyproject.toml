@@ -98,6 +98,11 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 pythonpath = "."
 asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests requiring external services or live models",
+    "e2e: End-to-end tests spinning up server instances",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["blueprint_agent","frontend"]

@@ -1,0 +1,111 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+steps:
+  # 1. Install Astral uv & dependencies
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: install-dependencies
+    entrypoint: /bin/bash
+    args:
+      - "-c"
+      - |
+        curl -LsSf https://astral.sh/uv/0.8.13/install.sh | sh
+        export PATH="$$HOME/.local/bin:$$PATH"
+        uv sync --locked --extra lint
+
+  # 2. Run code style and lint checks
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: lint
+    entrypoint: /bin/bash
+    args:
+      - "-c"
+      - |
+        export PATH="$$HOME/.local/bin:$$PATH"
+        echo "Running Ruff checks..."
+        uv run ruff check .
+        echo "Running Codespell..."
+        uv run codespell
+        echo "Running Ty type checker..."
+        uv run ty check .
+
+  # 3. Run unit tests via pytest
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: pytest-unit
+    entrypoint: /bin/bash
+    args:
+      - "-c"
+      - |
+        export PATH="$$HOME/.local/bin:$$PATH"
+        echo "Executing unit tests..."
+        uv run pytest tests/unit -v
+
+  # 4. Run integration tests via pytest
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: pytest-integration
+    entrypoint: /bin/bash
+    env:
+      - "INTEGRATION_TEST=TRUE"
+      - "GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
+      - "GOOGLE_CLOUD_LOCATION=global"
+      - "GOOGLE_GENAI_USE_ENTERPRISE=true"
+      - "MODEL=gemini-3.5-flash-lite"
+    args:
+      - "-c"
+      - |
+        export PATH="$$HOME/.local/bin:$$PATH"
+        echo "Executing integration tests..."
+        uv run pytest tests/integration -v
+
+  # 5. Build Docker Image
+  - name: "gcr.io/cloud-builders/docker"
+    id: docker-build
+    args:
+      - "build"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY_NAME}/blueprint-agent:${SHORT_SHA}"
+      - "."
+
+  # 6. Deploy to Agent Runtime (optional conditional step)
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: deploy-agent-runtime
+    entrypoint: /bin/bash
+    args:
+      - "-c"
+      - |
+        if [ "${_AUTO_DEPLOY}" = "true" ]; then
+          export PATH="$$HOME/.local/bin:$$PATH"
+          echo "Deploying to Agent Runtime on project ${PROJECT_ID}..."
+          uvx google-agents-cli deploy \
+            --project "${PROJECT_ID}" \
+            --region "${_REGION}" \
+            --service-account="${_APP_SERVICE_ACCOUNT}" \
+            --update-env-vars="COMMIT_SHA=${COMMIT_SHA},LOGS_BUCKET_NAME=${_LOGS_BUCKET_NAME}" \
+            --no-confirm-project
+        else
+          echo "Auto-deploy is disabled (_AUTO_DEPLOY=${_AUTO_DEPLOY}). Skipping deploy step."
+        fi
+
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY_NAME: blueprint-agent-repo
+  _AUTO_DEPLOY: "false"
+  _APP_SERVICE_ACCOUNT: blueprint-agent-app@svc-project-gke02.iam.gserviceaccount.com
+  _LOGS_BUCKET_NAME: svc-project-gke02-blueprint-agent-logs
+
+logsBucket: gs://${PROJECT_ID}-blueprint-agent-logs/build-logs
+options:
+  env:
+    - 'UV_PYTHON=3.12'
+  substitutionOption: ALLOW_LOOSE
+  defaultLogsBucketBehavior: REGIONAL_USER_OWNED_BUCKET

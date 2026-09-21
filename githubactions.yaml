@@ -1,0 +1,180 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Blueprint Agent CI/CD (Cloud Build Equivalent)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      auto_deploy:
+        description: 'Deploy to Agent Runtime (_AUTO_DEPLOY)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      project_id:
+        description: 'Google Cloud Project ID (PROJECT_ID)'
+        required: false
+        default: 'svc-project-gke02'
+      region:
+        description: 'Google Cloud Region (_REGION)'
+        required: false
+        default: 'us-central1'
+      repository_name:
+        description: 'Artifact Registry Repository Name (_REPOSITORY_NAME)'
+        required: false
+        default: 'blueprint-agent-repo'
+      app_service_account:
+        description: 'Agent Runtime Service Account (_APP_SERVICE_ACCOUNT)'
+        required: false
+        default: 'blueprint-agent-app@svc-project-gke02.iam.gserviceaccount.com'
+      logs_bucket_name:
+        description: 'GCS Logs Bucket Name (_LOGS_BUCKET_NAME)'
+        required: false
+        default: 'svc-project-gke02-blueprint-agent-logs'
+
+env:
+  UV_PYTHON: '3.12'
+  PROJECT_ID: ${{ inputs.project_id || vars.PROJECT_ID || vars.STAGING_PROJECT_ID || vars.CICD_PROJECT_ID || 'svc-project-gke02' }}
+  _REGION: ${{ inputs.region || vars.REGION || 'us-central1' }}
+  _REPOSITORY_NAME: ${{ inputs.repository_name || vars.REPOSITORY_NAME || 'blueprint-agent-repo' }}
+  _AUTO_DEPLOY: ${{ inputs.auto_deploy || vars.AUTO_DEPLOY || 'false' }}
+  _APP_SERVICE_ACCOUNT: ${{ inputs.app_service_account || vars.APP_SERVICE_ACCOUNT || vars.APP_SERVICE_ACCOUNT_STAGING || 'blueprint-agent-app@svc-project-gke02.iam.gserviceaccount.com' }}
+  _LOGS_BUCKET_NAME: ${{ inputs.logs_bucket_name || vars.LOGS_BUCKET_NAME || vars.LOGS_BUCKET_NAME_STAGING || 'svc-project-gke02-blueprint-agent-logs' }}
+  COMMIT_SHA: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    name: Build, Test & Deploy (Cloud Build Steps)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set Cloud Build compatible environment variables
+        id: set-env
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Astral uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.13"
+          enable-cache: true
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: "${{ env.WIF_POOL_ID != '' && env.WIF_PROVIDER_ID != '' }}"
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ vars.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/${{ secrets.WIF_POOL_ID }}/providers/${{ secrets.WIF_PROVIDER_ID }}'
+          service_account: '${{ secrets.GCP_SERVICE_ACCOUNT }}'
+          create_credentials_file: true
+          project_id: ${{ env.PROJECT_ID }}
+        env:
+          WIF_POOL_ID: ${{ secrets.WIF_POOL_ID }}
+          WIF_PROVIDER_ID: ${{ secrets.WIF_PROVIDER_ID }}
+
+      - name: Set up Google Cloud SDK
+        if: "${{ steps.auth.outcome == 'success' }}"
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: 'beta'
+
+      - name: Configure Docker for Artifact Registry
+        if: "${{ steps.auth.outcome == 'success' }}"
+        run: |
+          gcloud auth configure-docker "${_REGION}-docker.pkg.dev" --quiet
+
+      # 1. Install Astral uv & dependencies
+      - name: Install Astral uv & dependencies
+        id: install-dependencies
+        run: |
+          if ! command -v uv &> /dev/null; then
+            curl -LsSf https://astral.sh/uv/0.8.13/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          uv sync --locked --extra lint
+
+      # 2. Run code style and lint checks
+      - name: Run code style and lint checks
+        id: lint
+        run: |
+          echo "Running Ruff checks..."
+          uv run ruff check .
+          echo "Running Codespell..."
+          uv run codespell
+          echo "Running Ty type checker..."
+          uv run ty check .
+
+      # 3. Run unit tests via pytest
+      - name: Run unit tests via pytest
+        id: pytest-unit
+        run: |
+          echo "Executing unit tests..."
+          uv run pytest tests/unit -v
+
+      # 4. Run integration tests via pytest
+      - name: Run integration tests via pytest
+        id: pytest-integration
+        env:
+          INTEGRATION_TEST: "TRUE"
+          GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
+          GOOGLE_CLOUD_LOCATION: "global"
+          GOOGLE_GENAI_USE_ENTERPRISE: "true"
+          MODEL: "gemini-3.5-flash-lite"
+        run: |
+          echo "Executing integration tests..."
+          uv run pytest tests/integration -v
+
+      # 5. Build Docker Image
+      - name: Build Docker Image
+        id: docker-build
+        run: |
+          SHORT_SHA="${SHORT_SHA:-${GITHUB_SHA::7}}"
+          docker build -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY_NAME}/blueprint-agent:${SHORT_SHA}" .
+
+      # 6. Deploy to Agent Runtime (optional conditional step)
+      - name: Deploy to Agent Runtime
+        id: deploy-agent-runtime
+        run: |
+          if [ "${_AUTO_DEPLOY}" = "true" ]; then
+            echo "Deploying to Agent Runtime on project ${PROJECT_ID}..."
+            uvx google-agents-cli deploy \
+              --project "${PROJECT_ID}" \
+              --region "${_REGION}" \
+              --service-account="${_APP_SERVICE_ACCOUNT}" \
+              --update-env-vars="COMMIT_SHA=${COMMIT_SHA},LOGS_BUCKET_NAME=${_LOGS_BUCKET_NAME}" \
+              --no-confirm-project
+          else
+            echo "Auto-deploy is disabled (_AUTO_DEPLOY=${_AUTO_DEPLOY}). Skipping deploy step."
+          fi
